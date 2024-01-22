@@ -1,4 +1,5 @@
 import {Page, SlidingPanel} from 'argo-ui';
+import type {ActionMenu} from 'argo-ui/src/components/top-bar/top-bar';
 import classNames from 'classnames';
 import * as React from 'react';
 import {useContext, useEffect, useRef, useState} from 'react';
@@ -185,56 +186,55 @@ export function WorkflowDetails({history, location, match}: RouteComponentProps<
 
     function getItems() {
         const workflowOperationsMap: WorkflowOperations = Operations.WorkflowOperationsMap;
-        const items = Object.keys(workflowOperationsMap)
+        const items: ActionMenu['items'] = Object.keys(workflowOperationsMap)
             .filter(actionName => !workflowOperationsMap[actionName].disabled(workflow))
             .map(actionName => {
                 const workflowOperation = workflowOperationsMap[actionName];
                 return {
                     title: workflowOperation.title.charAt(0).toUpperCase() + workflowOperation.title.slice(1),
                     iconClassName: workflowOperation.iconClassName,
-                    action: () => {
-                        if (workflowOperation.title === 'DELETE') {
-                            popup
-                                .confirm('Confirm', () => <DeleteCheck isWfInDB={isArchivedWorkflow(workflow)} isWfInCluster={isWorkflowInCluster(workflow)} />)
-                                .then(async yes => {
-                                    if (!yes) {
-                                        return;
-                                    }
-
-                                    const allPromises = [];
-                                    if (isWorkflowInCluster(workflow)) {
-                                        allPromises.push(services.workflows.delete(workflow.metadata.name, workflow.metadata.namespace).catch(setError));
-                                    }
-                                    if (isArchivedWorkflow(workflow) && (globalDeleteArchived || !isWorkflowInCluster(workflow))) {
-                                        allPromises.push(services.workflows.deleteArchived(workflow.metadata.uid, workflow.metadata.namespace).catch(setError));
-                                    }
-                                    await Promise.all(allPromises);
-                                    if (error !== null) {
-                                        return;
-                                    }
-
-                                    navigation.goto(uiUrl(`workflows/${workflow.metadata.namespace}`));
-                                    // TODO: This is a temporary workaround so that the list of workflows
-                                    //  is correctly displayed. Workflow list page needs to be more responsive.
-                                    window.location.reload();
-                                });
-                        } else if (workflowOperation.title === 'RESUBMIT') {
+                    action: async () => {
+                        if (workflowOperation.title === 'RESUBMIT') {
                             setSidePanel('resubmit');
-                        } else if (workflowOperation.title === 'RETRY') {
+                            return;
+                        }
+                        if (workflowOperation.title === 'RETRY') {
                             setSidePanel('retry');
-                        } else {
-                            popup.confirm('Confirm', `Are you sure you want to ${workflowOperation.title.toLowerCase()} this workflow?`).then(yes => {
-                                if (!yes) {
-                                    return;
-                                }
+                            return;
+                        }
 
-                                workflowOperation
-                                    .action(workflow)
-                                    .then((wf: Workflow) => {
-                                        setName(wf.metadata.name);
-                                    })
-                                    .catch(setError);
-                            });
+                        if (workflowOperation.title === 'DELETE') {
+                            const yes = await popup.confirm('Confirm', () => <DeleteCheck isWfInDB={isArchivedWorkflow(workflow)} isWfInCluster={isWorkflowInCluster(workflow)} />);
+                            if (!yes) {
+                                return;
+                            }
+
+                            const allPromises = [];
+                            if (isWorkflowInCluster(workflow)) {
+                                allPromises.push(services.workflows.delete(workflow.metadata.name, workflow.metadata.namespace).catch(setError));
+                            }
+                            if (isArchivedWorkflow(workflow) && (globalDeleteArchived || !isWorkflowInCluster(workflow))) {
+                                allPromises.push(services.workflows.deleteArchived(workflow.metadata.uid, workflow.metadata.namespace).catch(setError));
+                            }
+                            await Promise.all(allPromises);
+                            if (error !== null) {
+                                return;
+                            }
+
+                            navigation.goto(uiUrl(`workflows/${workflow.metadata.namespace}`));
+                            return;
+                        }
+
+                        const yes = await popup.confirm('Confirm', `Are you sure you want to ${workflowOperation.title.toLowerCase()} this workflow?`);
+                        if (!yes) {
+                            return;
+                        }
+
+                        try {
+                            const wf = (await workflowOperation.action(workflow)) as Workflow; // delete is already handled above
+                            setName(wf.metadata.name);
+                        } catch (err) {
+                            setError(err);
                         }
                     }
                 };
@@ -368,9 +368,7 @@ export function WorkflowDetails({history, location, match}: RouteComponentProps<
         }
         const retryWatch = new RetryWatch<Workflow>(
             () => services.workflows.watch({name, namespace}),
-            () => {
-                setError(null);
-            },
+            () => setError(null),
             e => {
                 if (e.type === 'DELETED') {
                     setUid(e.object.metadata.uid);
@@ -386,9 +384,7 @@ export function WorkflowDetails({history, location, match}: RouteComponentProps<
                     setWorkflow(e.object);
                 }
             },
-            err => {
-                setError(err);
-            }
+            err => setError(err)
         );
         retryWatch.start();
         return () => retryWatch.stop();
@@ -479,14 +475,18 @@ export function WorkflowDetails({history, location, match}: RouteComponentProps<
         return services.workflows.resume(workflow.metadata.name, workflow.metadata.namespace, 'id=' + nodeId);
     }
 
-    function renderResumePopup() {
-        return popup.confirm('Confirm', renderSuspendNodeOptions).then(yes => {
-            if (!yes) {
-                return;
-            }
+    async function renderResumePopup() {
+        const yes = await popup.confirm('Confirm', renderSuspendNodeOptions)
+        if (!yes) {
+            return;
+        }
 
-            updateOutputParametersForNodeIfRequired().then(resumeNode).catch(setError);
-        });
+        try {
+            await updateOutputParametersForNodeIfRequired()
+            await resumeNode()
+        } catch (err) {
+            setError(err);
+        }
     }
 
     function ensurePodName(wf: Workflow, node: NodeStatus, nodeID: string): string {
@@ -570,7 +570,7 @@ export function WorkflowDetails({history, location, match}: RouteComponentProps<
                                         onShowEvents={() => setSidePanel(`events:${nodeId}`)}
                                         onShowYaml={() => setSidePanel(`yaml:${nodeId}`)}
                                         archived={archived}
-                                        onResume={() => renderResumePopup()}
+                                        onResume={renderResumePopup}
                                     />
                                 )}
                                 {selectedArtifact && (
