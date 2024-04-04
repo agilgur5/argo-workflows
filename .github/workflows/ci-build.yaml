@@ -417,7 +417,7 @@ jobs:
       - run: yarn --cwd ui deduplicate
       # Deduplicate UI deps for dependabot PRs
       - name: Commit deduplicated yarn.lock for Dependabot PRs
-        if: github.actor == 'dependabot[bot]'
+        # if: github.actor == 'dependabot[bot]'
         run: |
           # skip script if there were no changes from deduplicate
           if git diff --quiet -- ui/yarn.lock ; then
