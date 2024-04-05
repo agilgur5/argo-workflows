@@ -399,12 +399,16 @@ jobs:
     name: UI
     needs: [ changed-files ]
     if: ${{ needs.changed-files.outputs.ui == 'true' }}
+    permissions:
+      contents: write # for pushing deduplicated yarn.lock for dependabot PRs
     runs-on: ubuntu-latest
     timeout-minutes: 6
     env:
       NODE_OPTIONS: --max-old-space-size=4096
     steps:
       - uses: actions/checkout@b4ffde65f46336ab88eb53be808477a3936bae11 # v4.1.1
+        with:
+          fetch-depth: 50 # assume PRs are less than 50 commits -- fetch-depth is necessary in order to be able to push
       - uses: actions/setup-node@b39b52d1213e96004bfcb1c61a8a6fa8ab84f3e8 # v4.0.1
         with:
           node-version: "20" # change in all GH Workflows
@@ -417,13 +421,18 @@ jobs:
       - run: yarn --cwd ui deduplicate
       # Deduplicate UI deps for dependabot PRs
       - name: Commit deduplicated yarn.lock for Dependabot PRs
-        if: github.actor == 'dependabot[bot]'
+        # if: github.actor == 'dependabot[bot]'
         run: |
+          # skip script if there were no changes from deduplicate
+          if git diff --quiet -- ui/yarn.lock ; then
+            exit 0
+          fi
+
           git config --global user.name 'github-actions[bot]'
           git config --global user.email 'github-actions[bot]@users.noreply.github.com'
           git add ui/yarn.lock
           git commit -s --allow-empty -m 'chore: deduplicate yarn.lock'
-          git push
+          git push origin HEAD:$GITHUB_HEAD_REF # we are checked out on a detached HEAD, so need to specify branch
       # if lint or deduplicate make changes that are not in the PR, fail the build
       - name: Check if lint & deduplicate made changes not present in the PR
         run: git diff --exit-code
