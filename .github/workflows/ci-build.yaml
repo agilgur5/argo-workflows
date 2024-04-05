@@ -407,6 +407,8 @@ jobs:
       NODE_OPTIONS: --max-old-space-size=4096
     steps:
       - uses: actions/checkout@b4ffde65f46336ab88eb53be808477a3936bae11 # v4.1.1
+        with:
+          fetch-depth: 50 # assume PRs are less than 50 commits -- fetch-depth is necessary in order to be able to push
       - uses: actions/setup-node@b39b52d1213e96004bfcb1c61a8a6fa8ab84f3e8 # v4.0.1
         with:
           node-version: "20" # change in all GH Workflows
@@ -430,8 +432,6 @@ jobs:
           git config --global user.email 'github-actions[bot]@users.noreply.github.com'
           git add ui/yarn.lock
           git commit -s --allow-empty -m 'chore: deduplicate yarn.lock'
-          # we are checked out on a detached HEAD, so need to fetch the branch and specify it in order to push
-          git fetch origin $GITHUB_HEAD_REF
           git push origin HEAD:$GITHUB_HEAD_REF
       # if lint or deduplicate make changes that are not in the PR, fail the build
       - name: Check if lint & deduplicate made changes not present in the PR
