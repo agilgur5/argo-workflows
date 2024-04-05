@@ -399,6 +399,8 @@ jobs:
     name: UI
     needs: [ changed-files ]
     if: ${{ needs.changed-files.outputs.ui == 'true' }}
+    permissions:
+      contents: write # for pushing deduplicated yarn.lock for dependabot PRs
     runs-on: ubuntu-latest
     timeout-minutes: 6
     env:
