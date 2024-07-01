@@ -19,6 +19,8 @@ If you're using instance ID (which is very unlikely), you'll need to set it:
 
 #### Argo Server GRPC Mode
 
+> Deprecated
+
 Requests are sent to the Argo Server API via GRPC (using HTTP/2). Large workflows and the workflow archive are supported. Network load-balancers that do not support HTTP/2 are not supported.
 
 Use if you do not have access to the Kubernetes API (e.g. you're in another cluster), and you're running the Argo Server using a network load-balancer that support HTTP/2.

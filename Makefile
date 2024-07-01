@@ -134,26 +134,6 @@ SWAGGER_FILES := pkg/apiclient/_.primary.swagger.json \
 	pkg/apiclient/workflow/workflow.swagger.json \
 	pkg/apiclient/workflowarchive/workflow-archive.swagger.json \
 	pkg/apiclient/workflowtemplate/workflow-template.swagger.json
-PROTO_BINARIES := $(GOPATH)/bin/protoc-gen-gogo $(GOPATH)/bin/protoc-gen-gogofast $(GOPATH)/bin/goimports $(GOPATH)/bin/protoc-gen-grpc-gateway $(GOPATH)/bin/protoc-gen-swagger /usr/local/bin/clang-format
-
-# protoc,my.proto
-define protoc
-	# protoc $(1)
-    [ -e ./vendor ] || go mod vendor
-    protoc \
-      -I /usr/local/include \
-      -I $(CURDIR) \
-      -I $(CURDIR)/vendor \
-      -I $(GOPATH)/src \
-      -I $(GOPATH)/pkg/mod/github.com/gogo/protobuf@v1.3.2/gogoproto \
-      -I $(GOPATH)/pkg/mod/github.com/grpc-ecosystem/grpc-gateway@v1.16.0/third_party/googleapis \
-      --gogofast_out=plugins=grpc:$(GOPATH)/src \
-      --grpc-gateway_out=logtostderr=true:$(GOPATH)/src \
-      --swagger_out=logtostderr=true,fqn_for_swagger_name=true:. \
-      $(1)
-     perl -i -pe 's|argoproj/argo-workflows/|argoproj/argo-workflows/v3/|g' `echo "$(1)" | sed 's/proto/pb.go/g'`
-
-endef
 
 # cli
 
@@ -272,7 +252,7 @@ ifneq ($(SRC),$(PWD))
 endif
 
 .PHONY: types
-types: check-pwd pkg/apis/workflow/v1alpha1/generated.proto pkg/apis/workflow/v1alpha1/openapi_generated.go pkg/apis/workflow/v1alpha1/zz_generated.deepcopy.go
+types: check-pwd pkg/apis/workflow/v1alpha1/openapi_generated.go pkg/apis/workflow/v1alpha1/zz_generated.deepcopy.go
 
 .PHONY: swagger
 swagger: \
@@ -301,36 +281,6 @@ $(GOPATH)/bin/controller-gen:
 ifneq ($(USE_NIX), true)
 	go install sigs.k8s.io/controller-tools/cmd/controller-gen@v0.14.0
 endif
-$(GOPATH)/bin/go-to-protobuf:
-# update this in Nix when upgrading it here
-ifneq ($(USE_NIX), true)
-	go install k8s.io/code-generator/cmd/go-to-protobuf@v0.21.5
-endif
-$(GOPATH)/src/github.com/gogo/protobuf:
-# update this in Nix when upgrading it here
-ifneq ($(USE_NIX), true)
-	[ -e $(GOPATH)/src/github.com/gogo/protobuf ] || git clone --depth 1 https://github.com/gogo/protobuf.git -b v1.3.2 $(GOPATH)/src/github.com/gogo/protobuf
-endif
-$(GOPATH)/bin/protoc-gen-gogo:
-# update this in Nix when upgrading it here
-ifneq ($(USE_NIX), true)
-	go install github.com/gogo/protobuf/protoc-gen-gogo@v1.3.2
-endif
-$(GOPATH)/bin/protoc-gen-gogofast:
-# update this in Nix when upgrading it here
-ifneq ($(USE_NIX), true)
-	go install github.com/gogo/protobuf/protoc-gen-gogofast@v1.3.2
-endif
-$(GOPATH)/bin/protoc-gen-grpc-gateway:
-# update this in Nix when upgrading it here
-ifneq ($(USE_NIX), true)
-	go install github.com/grpc-ecosystem/grpc-gateway/protoc-gen-grpc-gateway@v1.16.0
-endif
-$(GOPATH)/bin/protoc-gen-swagger:
-# update this in Nix when upgrading it here
-ifneq ($(USE_NIX), true)
-	go install github.com/grpc-ecosystem/grpc-gateway/protoc-gen-swagger@v1.16.0
-endif
 $(GOPATH)/bin/openapi-gen:
 # update this in Nix when upgrading it here
 ifneq ($(USE_NIX), true)
@@ -341,39 +291,9 @@ $(GOPATH)/bin/swagger:
 ifneq ($(USE_NIX), true)
 	go install github.com/go-swagger/go-swagger/cmd/swagger@v0.28.0
 endif
-$(GOPATH)/bin/goimports:
-# update this in Nix when upgrading it here
-ifneq ($(USE_NIX), true)
-	go install golang.org/x/tools/cmd/goimports@v0.1.7
-endif
-
-/usr/local/bin/clang-format:
-ifeq (, $(shell which clang-format))
-ifeq ($(shell uname),Darwin)
-	brew install clang-format
-else
-	sudo apt update
-	sudo apt install clang-format
-endif
-endif
-
-pkg/apis/workflow/v1alpha1/generated.proto: $(GOPATH)/bin/go-to-protobuf $(PROTO_BINARIES) $(TYPES) $(GOPATH)/src/github.com/gogo/protobuf
-	# These files are generated on a v3/ folder by the tool. Link them to the root folder
-	[ -e ./v3 ] || ln -s . v3
-	# Format proto files. Formatting changes generated code, so we do it here, rather that at lint time.
-	# Why clang-format? Google uses it.
-	find pkg/apiclient -name '*.proto'|xargs clang-format -i
-	$(GOPATH)/bin/go-to-protobuf \
-		--go-header-file=./hack/custom-boilerplate.go.txt \
-		--packages=github.com/argoproj/argo-workflows/v3/pkg/apis/workflow/v1alpha1 \
-		--apimachinery-packages=+k8s.io/apimachinery/pkg/util/intstr,+k8s.io/apimachinery/pkg/api/resource,k8s.io/apimachinery/pkg/runtime/schema,+k8s.io/apimachinery/pkg/runtime,k8s.io/apimachinery/pkg/apis/meta/v1,k8s.io/api/core/v1,k8s.io/api/policy/v1 \
-		--proto-import $(GOPATH)/src
-	# Delete the link
-	[ -e ./v3 ] && rm -rf v3
-	touch pkg/apis/workflow/v1alpha1/generated.proto
 
 # this target will also create a .pb.go and a .pb.gw.go file, but in Make 3 we cannot use _grouped target_, instead we must choose
-# on file to represent all of them
+# one file to represent all of them
 pkg/apiclient/clusterworkflowtemplate/cluster-workflow-template.swagger.json: $(PROTO_BINARIES) $(TYPES) pkg/apiclient/clusterworkflowtemplate/cluster-workflow-template.proto
 	$(call protoc,pkg/apiclient/clusterworkflowtemplate/cluster-workflow-template.proto)
 
